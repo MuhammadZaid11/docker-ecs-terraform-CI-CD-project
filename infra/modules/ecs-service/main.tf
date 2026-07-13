@@ -1,12 +1,3 @@
-resource "aws_ecs_cluster" "this" {
-  name = "${var.project_name}-cluster"
-
-  setting {
-    name  = "containerInsights"
-    value = "enabled"
-  }
-}
-
 # IAM role that lets ECS pull images from ECR and write logs
 resource "aws_iam_role" "execution_role" {
   name = "${var.service_name}-execution-role"
@@ -91,11 +82,13 @@ resource "aws_ecs_service" "this" {
 
   load_balancer {
     target_group_arn = var.target_group_arn
-    container_name    = var.service_name
-    container_port    = var.container_port
+    container_name   = var.service_name
+    container_port   = var.container_port
   }
 
   lifecycle {
     ignore_changes = [task_definition]  # so CI/CD can update task def without terraform fighting it
   }
+
+  depends_on = [aws_iam_role_policy_attachment.execution_role_policy]
 }

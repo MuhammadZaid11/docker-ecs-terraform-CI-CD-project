@@ -44,16 +44,16 @@ resource "aws_secretsmanager_secret" "mongo_uri" {
 }
 
 module "ecs_backend" {
-  source              = "../../modules/ecs-service"
-  service_name        = "mern-backend"
-  cluster_id          = module.ecs_cluster.cluster_id
-  image_url           = "${module.ecr_backend.repository_url}:latest"
-  container_port      = 5000
-  private_subnet_ids  = module.vpc.private_subnet_ids
-  ecs_sg_id           = module.security.ecs_sg_id
-  target_group_arn    = module.alb.backend_tg_arn
-  aws_region          = var.aws_region
-  secret_arn          = aws_secretsmanager_secret.mongo_uri.arn
+  source             = "../../modules/ecs-service"
+  service_name       = "mern-backend"
+  cluster_id         = module.ecs_cluster.cluster_id
+  image_url          = "${module.ecr_backend.repository_url}:latest"
+  container_port     = 5000
+  private_subnet_ids = module.vpc.private_subnet_ids
+  ecs_sg_id          = module.security.ecs_sg_id
+  target_group_arn   = module.alb.backend_tg_arn
+  aws_region         = var.aws_region
+  secret_arn         = aws_secretsmanager_secret.mongo_uri.arn
   secrets = [{
     name      = "MONGO_URI"
     valueFrom = aws_secretsmanager_secret.mongo_uri.arn
