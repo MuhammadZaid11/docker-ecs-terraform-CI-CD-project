@@ -10,3 +10,7 @@ output "frontend_repo_url" {
 output "alb_dns_name" {
   value = module.alb.alb_dns_name
 }
+
+output "role_arn" {
+  value = module.github_oidc.role_arn
+}

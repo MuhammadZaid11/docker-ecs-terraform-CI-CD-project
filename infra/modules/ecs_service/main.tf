@@ -19,7 +19,7 @@ resource "aws_iam_role_policy_attachment" "execution_role_policy" {
 
 # Separate policy: allow reading the MongoDB URI secret (only for backend, but harmless if unused)
 resource "aws_iam_role_policy" "secrets_access" {
-  count = var.secret_arn != "" ? 1 : 0
+  count = var.enable_secrets_policy ? 1 : 0
   name  = "${var.service_name}-secrets-access"
   role  = aws_iam_role.execution_role.id
 

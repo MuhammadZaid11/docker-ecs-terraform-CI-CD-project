@@ -34,7 +34,7 @@ module "alb" {
 }
 
 module "ecs_cluster" {
-  source       = "../../modules/ecs-cluster"
+  source       = "../../modules/ecs_cluster"
   project_name = var.project_name
 }
 
@@ -44,7 +44,7 @@ resource "aws_secretsmanager_secret" "mongo_uri" {
 }
 
 module "ecs_backend" {
-  source             = "../../modules/ecs-service"
+  source             = "../../modules/ecs_service"
   service_name       = "mern-backend"
   cluster_id         = module.ecs_cluster.cluster_id
   image_url          = "${module.ecr_backend.repository_url}:latest"
@@ -54,6 +54,7 @@ module "ecs_backend" {
   target_group_arn   = module.alb.backend_tg_arn
   aws_region         = var.aws_region
   secret_arn         = aws_secretsmanager_secret.mongo_uri.arn
+  enable_secrets_policy = true
   secrets = [{
     name      = "MONGO_URI"
     valueFrom = aws_secretsmanager_secret.mongo_uri.arn
@@ -61,7 +62,7 @@ module "ecs_backend" {
 }
 
 module "ecs_frontend" {
-  source             = "../../modules/ecs-service"
+  source             = "../../modules/ecs_service"
   service_name       = "mern-frontend"
   cluster_id         = module.ecs_cluster.cluster_id
   image_url          = "${module.ecr_frontend.repository_url}:latest"
@@ -70,4 +71,10 @@ module "ecs_frontend" {
   ecs_sg_id          = module.security.ecs_sg_id
   target_group_arn   = module.alb.frontend_tg_arn
   aws_region         = var.aws_region
+}
+
+
+module "github_oidc" {
+  source     = "../../modules/github-oidc"
+  github_org = "your-github-username"   # replace with yours
 }
