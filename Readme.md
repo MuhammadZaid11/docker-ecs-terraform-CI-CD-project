@@ -27,7 +27,7 @@ This project demonstrates how to build a robust CI/CD workflow for a MERN app us
 The pipeline builds code, runs tests, builds and pushes Docker images to an image registry, and uses Terraform to create/update infrastructure and deploy the latest images.
 
 ## Architecture
-- Source: GitLab repository (this project)
+- Source: Github Action repository (this project)
 - CI: GitLab CI pipeline with stages: build, test, image-build, image-push, infra-plan, infra-apply, deploy
 - Container registry: AWS ECR (or GitLab Container Registry)
 - Compute: AWS ECS (Fargate) or EC2-based deployment (Terraform scripts are provided to provision resources — adapt to your preferred target)
