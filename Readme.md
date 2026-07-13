@@ -28,7 +28,7 @@ The pipeline builds code, runs tests, builds and pushes Docker images to an imag
 
 ## Architecture
 - Source: Github Action repository (this project)
-- CI: GitLab CI pipeline with stages: build, test, image-build, image-push, infra-plan, infra-apply, deploy
+- CI: GitAction CI pipeline with stages: build, test, image-build, image-push, infra-plan, infra-apply, deploy
 - Container registry: AWS ECR (or GitLab Container Registry)
 - Compute: AWS ECS (Fargate) or EC2-based deployment (Terraform scripts are provided to provision resources — adapt to your preferred target)
 - Database: MongoDB (self-managed on EC2, managed MongoDB Atlas, or hosted on RDS if using a compatible engine) — adjust according to terraform code in `infra/` if present
