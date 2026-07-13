@@ -1,199 +1,154 @@
-# GitLab CI/CD Pipeline for a MERN Application on AWS
+# TaskFlow — MERN Deployment on AWS ECS with Terraform & GitHub Actions CI/CD
 
-A reference implementation of a CI/CD pipeline (GitLab CI) for deploying a MERN (MongoDB, Express, React, Node) application to AWS. This repository contains application code, Dockerfiles, and Terraform (HCL) infrastructure-as-code to provision AWS resources and automate build, test, image publish, and deployment stages.
+A production-pattern deployment of a full MERN (MongoDB, Express, React, Node.js) application to AWS, built entirely with Infrastructure as Code and a fully automated CI/CD pipeline.
 
-## Table of Contents
-- [Overview](#overview)
-- [Architecture](#architecture)
-- [Repository layout](#repository-layout)
-- [Tech stack](#tech-stack)
-- [Prerequisites](#prerequisites)
-- [Local development](#local-development)
-- [GitLab CI/CD pipeline overview](#gitlab-cicd-pipeline-overview)
-- [Environment & CI variables](#environment--ci-variables)
-- [Terraform notes (infra)](#terraform-notes-infra)
-- [Docker notes](#docker-notes)
-- [Troubleshooting](#troubleshooting)
-- [Contributing](#contributing)
-- [License](#license)
+> **Live demo:** `http://mern-devops-alb-1172630931.us-east-1.elb.amazonaws.com`
+> *(Demo environment — infrastructure may be scaled down / destroyed periodically to manage AWS costs)*
 
-## Overview
-This project demonstrates how to build a robust CI/CD workflow for a MERN app using:
-- GitLab CI for pipeline orchestration
-- Docker images for frontend/backend
-- Terraform for provisioning AWS infrastructure (ECR, ECS/EC2, networking, optional RDS)
-- AWS as the deployment target
+---
 
-The pipeline builds code, runs tests, builds and pushes Docker images to an image registry, and uses Terraform to create/update infrastructure and deploy the latest images.
+## 📐 Architecture
 
-## Architecture
-- Source: Github Action repository (this project)
-- CI: GitAction CI pipeline with stages: build, test, image-build, image-push, infra-plan, infra-apply, deploy
-- Container registry: AWS ECR (or GitLab Container Registry)
-- Compute: AWS ECS (Fargate) or EC2-based deployment (Terraform scripts are provided to provision resources — adapt to your preferred target)
-- Database: MongoDB (self-managed on EC2, managed MongoDB Atlas, or hosted on RDS if using a compatible engine) — adjust according to terraform code in `infra/` if present
+```mermaid
+flowchart TB
+    Dev["👤 Developer<br/>git push to GitHub"]
+    GHA["⚙️ GitHub Actions<br/>Build & push Docker image (OIDC auth)"]
+    ECR["📦 Amazon ECR<br/>Frontend & backend image repositories"]
+    TF["🏗️ Terraform<br/>Provisions VPC, ECS, ALB, IAM"]
 
-## Repository layout
-- `backend/` — Node/Express API (server)
-- `frontend/` — React app
-- `Dockerfile` / `backend/Dockerfile` / `frontend/Dockerfile` — image definitions
-- `infra/` — Terraform HCL files for AWS resources
-- `.gitlab-ci.yml` — GitLab CI pipeline definition (example)
-- `README.md` — This file
+    subgraph VPC["AWS VPC"]
+        direction LR
+        subgraph Public["Public Subnet"]
+            ALB["🌐 Application Load Balancer<br/>Path-based routing"]
+        end
+        subgraph Private["Private Subnet"]
+            FE["ECS Fargate<br/>Frontend (Nginx + React)"]
+            BE["ECS Fargate<br/>Backend (Node/Express)"]
+        end
+        NAT["NAT Gateway"]
+    end
 
-(If any of these paths differ in your repo, update sections accordingly.)
+    Atlas[("🍃 MongoDB Atlas<br/>Managed database")]
+    Users["🧑‍💻 End Users"]
 
-## Tech stack
-- Node.js / npm
-- React
-- Express
-- MongoDB
-- Docker
-- Terraform (HCL)
-- GitLab CI
-- AWS (ECR, ECS, EC2, IAM, VPC, optionally RDS/S3/DynamoDB)
-
-## Prerequisites
-- Git
-- Node.js (v14+ or as required by project)
-- npm or yarn
-- Docker (for local image builds)
-- Terraform (for infra provisioning)
-- AWS CLI (for testing locally)
-- A GitLab repository and CI runner (GitLab.com or self-hosted)
-- AWS account with programmatic access (AWS_ACCESS_KEY_ID & AWS_SECRET_ACCESS_KEY)
-
-## Local development
-1. Clone the repo
-   git clone https://github.com/MuhammadZaid11/GitLab-CI-CD-Pipeline-for-a-MERN-Application-on-AWS.git
-2. Backend
-   - cd backend
-   - copy `.env.example` to `.env` and set values (PORT, MONGO_URI, JWT secrets, etc.)
-   - npm install
-   - npm run dev
-3. Frontend
-   - cd frontend
-   - copy `.env.example` to `.env` and set REACT_APP_API_URL
-   - npm install
-   - npm start
-
-You can run services separately, or use Docker Compose if a compose file is included.
-
-## GitLab CI/CD pipeline overview
-A typical pipeline contains these stages:
-- lint/test: run linters and unit tests for frontend and backend
-- build: compile frontend (create production build)
-- docker-build: build Docker images for backend and frontend
-- docker-push: tag and push images to registry (ECR or GitLab Container Registry)
-- infra-plan: run `terraform plan` to preview changes
-- infra-apply: run `terraform apply` (usually protected; run manually or on main branch)
-- deploy: update services (ECS service update or remote deploy script)
-
-Example .gitlab-ci.yml snippet (conceptual):
-```yaml
-stages:
-  - test
-  - build
-  - image
-  - infra
-  - deploy
-
-variables:
-  AWS_REGION: "us-east-1"
-
-test:
-  stage: test
-  script:
-    - cd backend && npm ci && npm test
-    - cd frontend && npm ci && npm test
-
-docker-build:
-  stage: image
-  image: docker:latest
-  services: 
-    - docker:dind
-  script:
-    - docker build -t $ECR_REPO_URI/backend:$CI_COMMIT_SHORT_SHA backend
-    - docker build -t $ECR_REPO_URI/frontend:$CI_COMMIT_SHORT_SHA frontend
-
-docker-push:
-  stage: image
-  image: docker:latest
-  services:
-    - docker:dind
-  script:
-    - $(aws ecr get-login --no-include-email --region $AWS_REGION)
-    - docker push $ECR_REPO_URI/backend:$CI_COMMIT_SHORT_SHA
-    - docker push $ECR_REPO_URI/frontend:$CI_COMMIT_SHORT_SHA
-
-terraform-plan:
-  stage: infra
-  image: hashicorp/terraform:light
-  script:
-    - cd infra
-    - terraform init -backend-config="bucket=$TF_STATE_BUCKET" ...
-    - terraform plan -out=tfplan
-
-terraform-apply:
-  stage: infra
-  when: manual
-  image: hashicorp/terraform:light
-  script:
-    - cd infra
-    - terraform apply -input=false tfplan
-
-deploy:
-  stage: deploy
-  script:
-    - ./scripts/deploy.sh $ECR_REPO_URI backend $CI_COMMIT_SHORT_SHA
+    Dev --> GHA --> ECR
+    ECR -.image pull.-> FE
+    ECR -.image pull.-> BE
+    TF -.provisions.-> VPC
+    Users --> ALB
+    ALB -->|"/*"| FE
+    ALB -->|"/api/*"| BE
+    BE --> NAT --> Atlas
+    BE -. reads secret .-> Secrets["🔐 AWS Secrets Manager<br/>MONGO_URI"]
 ```
-Adjust the snippet to match your repo structure and AWS target.
 
-## Environment & CI variables
-Set the following in GitLab CI/CD Settings > CI/CD > Variables (masked/protected where appropriate):
-- AWS_ACCESS_KEY_ID — AWS API key
-- AWS_SECRET_ACCESS_KEY — AWS secret
-- AWS_REGION — e.g., us-east-1
-- ECR_REPO_URI — account-id.dkr.ecr.region.amazonaws.com/your-repo
-- TF_STATE_BUCKET — S3 bucket name if using remote state
-- TF_VAR_db_password, TF_VAR_db_username — terraform input variables (if used)
-- DOCKER_USERNAME/DOCKER_PASSWORD — if using external registry
-- Any application-specific secrets (JWT_SECRET, MONGO_URI, etc.)
+**Request flow:** User hits the ALB → routed by path (`/api/*` → backend, everything else → frontend) → both services run as ECS Fargate tasks in private subnets → backend reads its MongoDB connection string from AWS Secrets Manager at runtime → outbound traffic to MongoDB Atlas goes through a NAT Gateway.
 
-Use GitLab CI/CD protected variables for production branches.
+---
 
-## Terraform notes (infra)
-- `infra/` contains HCL to provision AWS resources. Before running:
-  - Create and configure an S3 bucket (and optionally a DynamoDB table) for Terraform state locking (recommended for team use)
-  - Set backend configuration via environment variables or `backend.tfvars`
-- Typical terraform flow:
-  - terraform init
-  - terraform validate
-  - terraform plan -out=tfplan
-  - terraform apply tfplan
-- Inspect and adapt the Terraform files to match naming, VPC, subnet, and security rules appropriate for your account and security posture.
+## 🛠️ Tech Stack
 
-## Docker notes
-- Build locally:
-  - docker build -t mern-backend:local ./backend
-  - docker run -p 5000:5000 --env-file backend/.env mern-backend:local
-- Multi-stage Dockerfiles are recommended for smaller image sizes.
-- Tag images with commit SHA or semantic tags in CI for traceability.
+| Layer | Technology |
+|---|---|
+| Frontend | React, served via Nginx |
+| Backend | Node.js, Express |
+| Database | MongoDB Atlas (managed, external to AWS) |
+| Containerization | Docker (multi-stage builds) |
+| Container Registry | Amazon ECR (immutable tags, vulnerability scan on push) |
+| Orchestration | Amazon ECS on Fargate (serverless containers) |
+| Networking | Custom VPC, public/private subnets, NAT Gateway, Application Load Balancer |
+| Infrastructure as Code | Terraform (modular: vpc, security, alb, ecs-cluster, ecs-service, ecr) |
+| CI/CD | GitHub Actions, authenticated to AWS via OIDC (no long-lived keys) |
+| Secrets Management | AWS Secrets Manager |
+| Observability | Amazon CloudWatch (Container Insights, logs, metrics) |
 
-## Troubleshooting
-- IAM permissions: ensure CI AWS credentials have permissions to push to ECR, create/update ECS (or EC2), and manage required Terraform resources.
-- Terraform state: if plan/apply fails due to state conflicts, check S3 backend and DynamoDB locking.
-- Docker in CI: enable docker:dind and pass privileged where required (or use BuildKit or GitLab’s Container Registry to avoid dind).
-- Networking: if containers cannot access DB, verify security groups, subnets, and that environment variables (hostnames) are correct.
+---
 
-## Contributing
-Contributions are welcome. Suggested workflow:
-1. Fork the repo
-2. Create a branch: `feature/your-feature`
-3. Run tests and linting locally
-4. Open a PR with a clear description
+## ✨ Key Engineering Decisions
 
-Please include Terraform and Docker changes in small, reviewable commits.
+- **Stateless database strategy** — MongoDB runs on Atlas, not inside ECS, since Fargate containers are ephemeral and unsuitable for stateful workloads.
+- **Path-based routing over CORS workarounds** — frontend and backend share one ALB/domain (`/api/*` vs `/*`), eliminating cross-origin issues by design instead of patching them with CORS headers.
+- **OIDC-based CI/CD authentication** — GitHub Actions assumes a scoped IAM role via OpenID Connect instead of storing static AWS access keys as repo secrets.
+- **Immutable image tags** — every deployment is tagged with the Git commit SHA, giving full traceability and instant rollback capability.
+- **Private subnet isolation** — application containers have no public IPs; only the ALB is internet-facing, with security groups restricting traffic to ALB-origin only.
+- **Modular Terraform** — infrastructure is written as reusable modules (`vpc`, `alb`, `ecs-service`, etc.) so the same code can stand up dev/staging/prod environments with different `.tfvars`.
 
-## License
-This project is provided under the MIT License. See LICENSE for details.
+---
+
+## 🔄 CI/CD Pipeline
+
+On every push to `main`:
+1. GitHub Actions authenticates to AWS via OIDC (short-lived token, no stored secrets)
+2. Docker image is built and tagged with the Git commit SHA
+3. Image is pushed to the corresponding ECR repository
+4. The existing ECS task definition is fetched and updated with the new image
+5. ECS service is redeployed, and the workflow waits for the new tasks to become healthy before reporting success
+
+---
+
+## 📁 Repository Structure
+
+This project spans three repositories:
+- `frontend-repo` — React application + Dockerfile + GitHub Actions workflow
+- `backend-repo` — Express API + Dockerfile + GitHub Actions workflow
+- `infra-repo` — Terraform modules and environment configuration
+
+```
+infra-repo/
+├── modules/
+│   ├── vpc/
+│   ├── security/
+│   ├── alb/
+│   ├── ecs-cluster/
+│   ├── ecs-service/
+│   ├── ecr/
+│   └── github-oidc/
+└── environments/
+    └── dev/
+        ├── main.tf
+        ├── variables.tf
+        ├── outputs.tf
+        └── backend.tf
+```
+
+---
+
+## 🚀 Deploying This Yourself
+
+```bash
+# 1. Set up Terraform remote state (one-time)
+aws s3api create-bucket --bucket <your-tfstate-bucket> --region us-east-1
+aws dynamodb create-table --table-name terraform-locks \
+  --attribute-definitions AttributeName=LockID,AttributeType=S \
+  --key-schema AttributeName=LockID,KeyType=HASH \
+  --billing-mode PAY_PER_REQUEST
+
+# 2. Provision infrastructure
+cd infra-repo/environments/dev
+terraform init
+terraform apply
+
+# 3. Set your MongoDB Atlas connection string
+aws secretsmanager put-secret-value \
+  --secret-id <project>/mongo-uri \
+  --secret-string "<your-mongodb-atlas-uri>"
+
+# 4. Push to main in frontend-repo / backend-repo — GitHub Actions handles the rest
+```
+
+---
+
+## 🔮 Future Improvements
+
+- [ ] HTTPS via ACM certificate + HTTP→HTTPS redirect on the ALB
+- [ ] Auto Scaling policies based on CPU/memory utilization
+- [ ] CloudWatch Alarms + SNS notifications for unhealthy tasks
+- [ ] Multi-environment support (staging/prod) using the existing Terraform modules
+- [ ] WAF in front of the ALB
+
+---
+
+## 👤 Author
+
+**Muhammad Zaid** — Transitioning from Mechanical Engineering into DevOps & Cloud Engineering.
+[LinkedIn](#) · [GitHub](#)
